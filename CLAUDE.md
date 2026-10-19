@@ -4,13 +4,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this folder is
 
-Quant finance experiments. There is no `requirements.txt`.
+Quant finance projects, published on GitHub as `ArnaudIllien/derivatives-pricing-and-structuring` (public). The README targets internship recruiters, so keep it accurate: every number it quotes comes from the code (`pricer.diagnostics`, `docs/make_figures.py`, the offline report).
+
+- `requirements.txt` pins the packages. `.github/workflows/tests.yml` runs the three offline test suites on every push.
+- `docs/` holds `MATHEMATICS.md` (model details moved out of the README), `make_figures.py` (rebuilds the README figures in `docs/images/`; `--offline` skips the two network figures) and the app screenshots, which the user provides.
 
 - `pricer/` is the option-pricing package (all pricers live here). Details are in the next section. **Everything in it is in English**: names, comments and UI text.
 - `market_watch/` is the Streamlit market dashboard built on free APIs, also **all in English**. See its section below.
 - `structuring/` is the Structured Products Intelligence Platform, also **all in English**. It turns an investor profile into several structured solutions, then values and compares them. See its section below.
-- `.gitignore` excludes `__pycache__/`, `market_watch/.env` (API keys: never commit it) and `market_watch/watchlist.json`.
-- `quant_trading_backtester.ipynb` backtests a long/short momentum strategy on data downloaded from Yahoo Finance via `yfinance`. Its comments, variable names and UI text are in French.
+- `.gitignore` excludes `__pycache__/`, `market_watch/.env` (API keys: never commit it), `market_watch/watchlist.json` and the `* - Copie.ipynb` backups.
+- `quant_trading_backtester.ipynb` backtests a long/short momentum strategy on data downloaded from Yahoo Finance via `yfinance`. It is in English, like the rest. The local backup `quant_trading_backtester - Copie.ipynb` is still in French and is not tracked.
 
 ## Pricer package (`pricer/`)
 
@@ -33,7 +36,7 @@ Quant finance experiments. There is no `requirements.txt`.
 - `greeks.py` computes Greeks by finite differences for any `price_fn(option, market)`. Theta uses `option.shifted` and `Market.shifted`, so dividend and observation dates move closer. The client shifts the Bermudan exercise dates itself.
 - Market data and analysis:
   - `market_data.py` is the only module that imports `yfinance`, and only when called, so the pricers still need only numpy and scipy. `YahooClient` is the network boundary; tests replace it with `test/fake_yahoo.py`. `fetch_snapshot` gives spot, rate (USD: ^IRX discount yield converted to continuous; EUR: €STR from the ECB; other currencies fall back to USD and say so), dividend yield (Yahoo `trailingAnnualDividendYield`, a fraction; `dividendYield` is in %, don't use it) and historical volatility.
-  - `implied_vol.py` inverts any pricer with Brent. Smiles keep out-of-the-money mids with a bounded spread. `pick_expiries` picks expiries near target maturities, because SPY lists daily expiries.
+  - `implied_vol.py` inverts any pricer with Brent. Smiles keep out-of-the-money mids with a bounded spread. `pick_expiries` picks expiries near target maturities, because SPY lists daily expiries. Use `forward_from_parity=True` (forward and discount fitted on C − P = D(F − K) per expiry) for long expiries of European options such as ^SPX. Otherwise a wrong rate or dividend creates a jump between put and call volatilities at the money.
   - `hedging.py` is the delta-hedging backtest: short a European option at the hedge volatility, BSM deltas from `bsm_price_and_delta` (vectorised, in `european.py`), on real or simulated paths. `gamma_pnl` explains the result.
 - `client.py` is the interactive terminal client (`python -m pricer.client`). `price_request` holds the logic, separate from the input/output functions, so tests can drive it with scripted answers. Its "Market data?" question can load a Yahoo snapshot; tests pass a fake `fetch_snapshot`.
 - Run the tests from the repo root: `python -m unittest discover -s pricer/test -t .` (about 25 s, offline). Run the convergence tables with `python -m pricer.diagnostics` (about 1 min) and the hedging demo with `python -m pricer.hedging` (network).
@@ -103,9 +106,10 @@ Quant finance experiments. There is no `requirements.txt`.
 
 ## Backtester structure
 
-- Cells 0–6 are exploratory: they download EUR/USD and define `strategy`, `sharpe_ratio` and `optimize_window`. Then they split 70/30 into train and test, pick the best momentum window (1–50) by train Sharpe ratio, and report the out-of-sample Sharpe ratio.
-- **Cell 7 is a self-contained Streamlit app.** It re-defines the same three functions and adds a ticker picker, date inputs, window and fee sliders, train/test equity curves, and a button that runs the optimisation on the train set only. It only works when copied into a `.py` file and launched with `streamlit run <file>.py`; it doesn't work when the cell runs inside Jupyter.
-- Because the three functions are duplicated, a change to the strategy logic must be made in both cell 1/5/6 **and** cell 7.
+- Cell 0 is a markdown introduction (method and result).
+- Cells 1–5 are exploratory: they download EUR/USD and define `strategy`, `sharpe_ratio` and `optimize_window`. Then they split 70/30 into train and test, pick the best momentum window (1–50) by train Sharpe ratio, and report the out-of-sample Sharpe ratio.
+- **Cell 6 is a self-contained Streamlit app.** It re-defines the same three functions and adds a ticker picker, date inputs, window and fee sliders, train/test equity curves, and a button that runs the optimisation on the train set only. It only works when copied into a `.py` file and launched with `streamlit run <file>.py`; it doesn't work when the cell runs inside Jupyter. Its output is kept empty.
+- Because the three functions are duplicated, a change to the strategy logic must be made in both cells 2/4/5 **and** cell 6.
 - Strategy conventions:
   - Returns are logarithmic.
   - The position is `+1` or `-1` depending on the sign of the summed returns over the window.

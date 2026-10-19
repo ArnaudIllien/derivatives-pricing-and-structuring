@@ -9,13 +9,14 @@ used to generate the fake quotes.
 """
 import math
 import unittest
+from dataclasses import replace
 from datetime import date
 
 from pricer.baw import baw_price
 from pricer.contract import Option
 from pricer.european import european_price
-from pricer.implied_vol import (atm_volatility, implied_volatility, pick_expiries, term_structure, volatility_smile,
-                                volatility_surface)
+from pricer.implied_vol import (atm_volatility, implied_volatility, parity_forward, pick_expiries, term_structure,
+                                volatility_smile, volatility_surface)
 from pricer.market import Market
 from pricer.market_data import (fetch_snapshot, historical_volatility, option_expiries, option_quotes,
                                 risk_free_rate, tbill_rate)
@@ -116,6 +117,24 @@ class TestSmile(unittest.TestCase):
                 self.assertAlmostEqual(p.implied_volatility, smile_volatility(p.strike, forward), places=6)
                 self.assertEqual(p.option_type, "put" if p.strike < forward else "call")
         self.assertAlmostEqual(atm_volatility(points), 0.2, delta=2e-3)
+
+    def test_forward_from_parity(self):
+        # the fake chain is priced with BSM at r = tbill_rate(4 %) and q = 1 %: parity recovers F and D exactly
+        expiry = option_expiries("FAKE", self.client)[2]
+        quotes = option_quotes("FAKE", expiry, self.client)
+        maturity = quotes[0].maturity(AS_OF)
+        forward, discount = parity_forward(quotes, SPOT)
+        rate = tbill_rate(TBILL_PERCENT)
+        self.assertAlmostEqual(discount, math.exp(-rate*maturity), places=10)
+        self.assertAlmostEqual(forward, SPOT*math.exp((rate - DIVIDEND_YIELD)*maturity), places=8)
+        # a snapshot with a wrong carry still gives the right smile once the forward comes from parity
+        wrong = replace(self.snapshot, dividend_yield=0.05)
+        points = volatility_smile(quotes, wrong, forward_from_parity=True)
+        for p in points:
+            with self.subTest(strike=p.strike):
+                self.assertAlmostEqual(p.implied_volatility, smile_volatility(p.strike, forward), places=6)
+        with self.assertRaises(ValueError):
+            parity_forward(quotes[:2], SPOT)
 
     def test_filters(self):
         expiry = option_expiries("FAKE", self.client)[1]

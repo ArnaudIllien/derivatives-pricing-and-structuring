@@ -29,6 +29,13 @@ Smile and surface conventions
   options such as SPX are European).
 - The Yahoo implied volatility is kept next to ours for comparison. Yahoo does
   not document its method, so small gaps are expected.
+- Forward: by default F = S e^{(r - q) T} with the snapshot's rate and dividend
+  yield. With `forward_from_parity=True`, each expiry uses instead the forward and
+  discount factor implied by put-call parity on its own quotes,
+      C(K) - P(K) = D (F - K)   (European options),
+  fitted by least squares on the strikes near the money: slope -D, intercept D F.
+  This removes the jump between put and call volatilities at the money that a
+  wrong rate or dividend creates on long expiries.
 """
 import math
 from dataclasses import dataclass, replace
@@ -73,17 +80,43 @@ class SmilePoint:
     yahoo_implied_volatility: float
 
 
+def parity_forward(quotes: list[OptionQuote], spot: float, band: float = 0.1,
+                   max_spread: float = 0.5) -> tuple[float, float]:
+    """
+    (forward, discount factor) of one expiry from put-call parity, C - P = D (F - K), by least
+    squares on the strikes within `band` of the spot that have a two-sided call and put quote.
+    """
+    calls = {q.strike: q.mid for q in quotes if q.option_type == CALL and q.bid > 0 and q.relative_spread <= max_spread}
+    puts = {q.strike: q.mid for q in quotes if q.option_type != CALL and q.bid > 0 and q.relative_spread <= max_spread}
+    strikes = np.array(sorted(k for k in calls.keys() & puts.keys() if abs(k/spot - 1) <= band))
+    if len(strikes) < 3:
+        raise ValueError("Not enough strikes with both a call and a put quote near the money.")
+    gaps = np.array([calls[k] - puts[k] for k in strikes])
+    slope, intercept = np.polyfit(strikes, gaps, 1)
+    discount = -slope
+    if not 0 < discount <= 1.5:
+        raise ValueError(f"Put-call parity gives an implausible discount factor {discount:.3f}.")
+    return intercept/discount, discount
+
+
 def volatility_smile(quotes: list[OptionQuote], snapshot: MarketSnapshot, american: bool = False,
-                     otm_only: bool = True, max_spread: float = 0.5) -> list[SmilePoint]:
+                     otm_only: bool = True, max_spread: float = 0.5,
+                     forward_from_parity: bool = False) -> list[SmilePoint]:
     """Implied volatilities of one expiry; quotes that cannot be inverted are skipped."""
     market = snapshot.market()
+    if forward_from_parity and quotes:
+        # rate and carry implied by this expiry's own quotes (European options)
+        maturity = quotes[0].maturity(snapshot.as_of)
+        forward, discount = parity_forward(quotes, snapshot.spot, max_spread=max_spread)
+        rate = -math.log(discount)/maturity
+        market = Market(snapshot.spot, rate, market.volatility, rate - math.log(forward/snapshot.spot)/maturity)
     price_fn = baw_price if american else european_price
     points = []
     for quote in quotes:
         maturity = quote.maturity(snapshot.as_of)
         if maturity <= 0 or quote.bid <= 0 or quote.relative_spread > max_spread:
             continue
-        forward = snapshot.spot*math.exp((snapshot.rate - snapshot.dividend_yield)*maturity)
+        forward = snapshot.spot*math.exp((market.rate - market.dividend_yield)*maturity)
         is_call = quote.option_type == CALL
         if otm_only and (quote.strike < forward if is_call else quote.strike > forward):
             continue
@@ -117,7 +150,7 @@ def pick_expiries(expiries: list[date], as_of: date, target_days=(30, 60, 91, 18
 
 def volatility_surface(ticker: str, client: YahooClient | None = None, snapshot: MarketSnapshot | None = None,
                        target_days=(30, 60, 91, 182, 365, 730), min_days: int = 7, american: bool = False,
-                       max_spread: float = 0.5) -> list[SmilePoint]:
+                       max_spread: float = 0.5, forward_from_parity: bool = False) -> list[SmilePoint]:
     """
     Smiles of the expiries closest to the target maturities (in days). Expiries
     closer than `min_days` are skipped: their time values are tiny, so their
@@ -127,7 +160,8 @@ def volatility_surface(ticker: str, client: YahooClient | None = None, snapshot:
     snapshot = snapshot or fetch_snapshot(ticker, client)
     points = []
     for expiry in pick_expiries(option_expiries(ticker, client), snapshot.as_of, target_days, min_days):
-        points += volatility_smile(option_quotes(ticker, expiry, client), snapshot, american, max_spread=max_spread)
+        points += volatility_smile(option_quotes(ticker, expiry, client), snapshot, american, max_spread=max_spread,
+                                   forward_from_parity=forward_from_parity)
     return points
 
 

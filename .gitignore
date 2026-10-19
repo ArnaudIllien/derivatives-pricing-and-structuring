@@ -8,3 +8,6 @@ market_watch/.env
 
 # Personal dashboard state
 market_watch/watchlist.json
+
+# Manual notebook backups
+* - Copie.ipynb

@@ -1,84 +1,152 @@
-# Quantitative Finance Toolkit: Option Pricing, Market Data and Structured Products
+# Derivatives Pricing & Structuring Toolkit
 
-A personal project in Python covering the main building blocks of an equity derivatives desk:
+[![tests](https://github.com/ArnaudIllien/derivatives-pricing-and-structuring/actions/workflows/tests.yml/badge.svg)](https://github.com/ArnaudIllien/derivatives-pricing-and-structuring/actions/workflows/tests.yml)
+![Python 3.12](https://img.shields.io/badge/python-3.12-blue)
+![213 offline tests](https://img.shields.io/badge/tests-213%20offline-informational)
 
-- **pricing** of options with closed forms, trees and Monte Carlo methods;
-- **live market data** from free APIs, including implied volatility surfaces;
-- **risk management**, with a delta-hedging backtest;
-- a **structuring platform** that turns an investor's views and constraints into several structured products, then values and compares them transparently.
+A Python project covering the main building blocks of a derivatives desk:
+- **pricing** options with closed forms, trees and Monte Carlo methods;
+- **hedging** them, with a delta-hedging backtest on real prices;
+- **reading the market** from free data, through a market dashboard;
+- **structuring** products for an investor, from their market view to a comparison of several solutions.
 
-Every model is validated against an independent method, every module is unit-tested (212 tests, all offline), and every number the interfaces show states where it comes from: observed, model estimate or hypothetical.
+> **About me.** I am Arnaud Illien, an MSc in Finance student at **EDHEC Business School** (Grande École programme). I took derivatives, stochastic analysis and energy trading during a QTEM exchange at the **Technical University of Munich**, and I am currently a Middle Office Analyst intern at **AEW (Natixis Investment Managers)**.
+> **I am looking for a 6-month internship from March 2027** in market risk, asset management, structuring or trading.
+> [LinkedIn](https://www.linkedin.com/in/arnaud-illien) · arnaud.illien@edhec.com
 
-> **Disclaimer.** This is an educational project. Model values are estimates, not executable prices, and nothing here is investment advice.
+## Highlights
 
----
+- **An option pricing library written from scratch.**
+  - Black-Scholes-Merton and binomial trees with exact discrete dividends.
+  - Barone-Adesi-Whaley, and Longstaff-Schwartz for American and Bermudan options.
+  - Asian options priced by Monte Carlo with a control variate.
+  - Greeks, and implied volatility surfaces from listed options.
+- **Every model checked against an independent one.** Longstaff-Schwartz lands within 0.4–1.3 % of the binomial tree, and below it as theory predicts. Barone-Adesi-Whaley stays within 0.25 % at the money up to one year.
+- **Hedging on real prices.** A SPY call was sold at the VIX (19.0 %) while the market then realised 12.7 %. The delta hedge earned +11.26, against +11.34 predicted by the gamma P&L formula.
+- **A structured products platform.** It turns an investor's scenario into seven structures (autocallable, reverse convertible, capital-protected notes, option spreads, collar) and solves their coupons. It then values issuer credit, stress-tests the investor's convictions and checks whether each structure beats a simpler alternative.
+- **A market dashboard on free APIs**: 73 instruments on four continents, yield curves, electricity prices, macro data and news.
+- **213 unit tests** that run without network, on every push.
 
-## Contents
+## Screenshots
 
-| Folder | What it is | Entry point |
+**Structuring platform: the investor questionnaire, then the stress test of their convictions.**
+
+![Investor questionnaire](docs/images/structuring_questionnaire.png)
+![Stress test of the convictions](docs/images/structuring_stress_test.png)
+
+**Candidate structures for a +10 % view on the Euro Stoxx 50.** For each one, the result at maturity on a straight path and on a path that dips to 50 %, so barriers and autocalls follow the path.
+
+![Payoffs of the candidate structures](docs/images/structuring_payoffs.png)
+
+**Market dashboard: performance heatmap.**
+
+![Market dashboard heatmap](docs/images/market_watch_heatmap.png)
+
+## Quick start
+
+```bash
+git clone https://github.com/ArnaudIllien/derivatives-pricing-and-structuring.git
+cd derivatives-pricing-and-structuring
+pip install -r requirements.txt
+
+python -m structuring.client --report --offline   # text report, no network needed
+python -m structuring.client                      # structuring platform (Streamlit)
+python -m streamlit run market_watch/app.py       # market dashboard
+python -m pricer.client                           # interactive option pricer (terminal)
+```
+
+## What is inside
+
+| Folder | Project | Entry point |
 |---|---|---|
 | [`pricer/`](pricer) | Option pricing library: European, American, Bermudan and Asian options, Greeks, implied volatility, delta hedging | `python -m pricer.client` |
-| [`market_watch/`](market_watch) | Daily market dashboard built on free data sources (rates, FX, equity indices on four continents, commodities, electricity, macro, news) | `python -m streamlit run market_watch/app.py` |
-| [`structuring/`](structuring) | Structured Products Intelligence Platform: investor questionnaire → candidate structures → valuation, scenarios, stress tests, comparison | `python -m structuring.client` |
-| `quant_trading_backtester.ipynb` | Long/short momentum strategy backtest with train/test split (comments in French) | Jupyter |
+| [`structuring/`](structuring) | Structured Products Intelligence Platform: questionnaire → candidate structures → valuation, scenarios, stress tests, comparison | `python -m structuring.client` |
+| [`market_watch/`](market_watch) | Daily market dashboard built on free data sources | `python -m streamlit run market_watch/app.py` |
+| [`quant_trading_backtester.ipynb`](quant_trading_backtester.ipynb) | Momentum long/short backtest with a train/test split | Jupyter |
+| [`docs/`](docs) | [Mathematics of the models](docs/MATHEMATICS.md), and the script that rebuilds every figure | `python docs/make_figures.py` |
 
----
+### 1. Option pricing library
 
-## 1. Objectives
+| Method | Used for | Validated against |
+|---|---|---|
+| Black-Scholes-Merton | European options; Bos-Vandermark escrowed dividends | Binomial tree, Monte Carlo |
+| Cox-Ross-Rubinstein tree | European, American, Bermudan; exact discrete dividends (Vellekoop-Nieuwenhuis) | Black-Scholes, Monte Carlo |
+| Barone-Adesi-Whaley | American options, analytic approximation | Tree |
+| Longstaff-Schwartz (LSM) | American and Bermudan options; policy evaluated on independent paths | Tree, including the exact Bermudan tree on the same grid |
+| Monte Carlo + control variate | Arithmetic Asian options; geometric Asian in closed form as the control | Closed forms in limit cases |
+| Brent inversion | Implied volatility; forward and discount from put-call parity | Round trips on known prices |
+| Delta-hedging backtest | Hedge P&L on real or simulated paths | Gamma P&L formula |
 
-1. **Implement the standard pricing methods from scratch and prove they are right.** Each method is checked against another one: the closed forms against the trees, the trees against Monte Carlo, the approximations against exact references.
-2. **Connect the models to real data** without hiding what is observed and what is assumed.
-3. **Reproduce the reasoning of a structurer.** Start from a client need, build several solutions, set their terms so that model value = issue price − costs, then show costs, risks and scenarios. Never rank solutions by headline return alone.
+The core formula behind each method is in [docs/MATHEMATICS.md](docs/MATHEMATICS.md). For example, the delta-hedged P&L of a short option is a bet on volatility:
 
----
+$$\text{P\&L} \approx \sum_k \tfrac12\,\Gamma_k S_k^2\left(\sigma_{\text{hedge}}^2\,\Delta t - r_k^2\right).$$
 
-## 2. The pricing library (`pricer/`)
+<p>
+<img src="docs/images/pricer_validation.png" width="100%" alt="LSM convergence and BAW error">
+</p>
+<p>
+<img src="docs/images/spx_smile.png" width="49%" alt="S&P 500 volatility smile">
+<img src="docs/images/hedging_spy.png" width="49%" alt="Delta hedge of a SPY call">
+</p>
+<p>
+<img src="docs/images/asian_control_variate.png" width="49%" alt="Asian control variate">
+<img src="docs/images/hedging_simulated.png" width="49%" alt="Hedge error against rebalancing frequency">
+</p>
 
-### Models and mathematics
+### 2. Structured products platform
 
-**Black-Scholes-Merton (European options).** The underlying follows a geometric Brownian motion under the risk-neutral measure:
+It reproduces the workflow of a structurer, in nine steps:
 
-$$dS_t = (r-q)\,S_t\,dt + \sigma S_t\,dW_t, \qquad C = S e^{-qT}N(d_1) - K e^{-rT}N(d_2),$$
+1. **Questionnaire.** Objectives, constraints, and a **described scenario** rather than a single direction. Example: 50 % "+8 % within six months, volatility −3 pts", 30 % stagnation, 20 % "−15 % within a year".
+2. **Market data with provenance.** Each parameter shows its source and date, and is tagged in one of three ways:
+   - observed: spot, government yields;
+   - model estimate: implied or historical volatility, dividends from an ETF proxy;
+   - hypothetical: issuer spread, fees, issue price.
+3. **Candidate structures.** Their coupons and participations are **solved** so that the model value, including issuer credit, equals the issue price minus costs.
+4. **Valuation sheet.** It shows the bond part, the option components valued one by one (they add up exactly to the model value) and the embedded costs.
+5. **Scenarios.** The platform shows the result on explicit paths (crash then recovery, V-shape) and the distribution of results under the investor's scenario. Probabilities are always labelled with their hypotheses.
+6. **Stress test of the convictions:**
+   - the view is right, but volatility explodes;
+   - right, but the move is slower;
+   - right, then the market reverses;
+   - stagnation for the whole life;
+   - wrong direction;
+   - crash.
+7. **Suitability checks.** Every preference is compared with the **contractual** property of each structure. For example, the declared maximum loss is checked against the worst loss the contract allows. A structure is never ranked by its headline return.
+8. **Comparison with simple solutions.** Each structure is compared with direct exposure, a do-it-yourself option combination without issuer, and a deposit + underlying mix with the same maximum loss. The platform then says whether the complexity adds value, is dominated, or is a trade-off.
+9. **Structuring lab and professional mode.** Every term can be edited, and the cost updates at once. The professional mode shows full Greeks, Monte Carlo convergence and model limits.
 
-$$d_{1,2} = \frac{\ln(S/K) + (r - q \pm \sigma^2/2)T}{\sigma\sqrt{T}}.$$
+The details are in [`structuring/METHODOLOGY.md`](structuring/METHODOLOGY.md).
 
-Discrete cash dividends use the Bos-Vandermark escrowed-dividend approximation, which splits each dividend between the spot and the strike.
+### 3. Market dashboard
 
-**Cox-Ross-Rubinstein binomial tree (European, American, Bermudan).**
-- The tree uses $u = e^{\sigma\sqrt{\Delta t}}$, $d = 1/u$ and $p = (e^{(r-q)\Delta t} - d)/(u-d)$, with backward induction $V = \max(\text{payoff},\; e^{-r\Delta t}[pV_u + (1-p)V_d])$ on exercise dates.
-- Discrete dividends are exact, using the Vellekoop-Nieuwenhuis method: the tree stays recombining, and the value before the drop is interpolated as $V_{cum}(S) = V_{ex}(S - D)$.
-- Averaging the trees with $n$ and $n+1$ steps removes the odd/even oscillation.
-- The tree is the **independent reference** used to validate the other American pricers.
+A Streamlit dashboard built only on free sources:
+- **Market data from Yahoo Finance**: indices from Europe, the Americas, Asia-Pacific and Africa, FX, commodities, volatility indices.
+- **Rates and macro**: US Treasury and ECB yield curves (today, one month and one year ago), FRED macro series.
+- **Electricity**: Energy-Charts, plus ENTSO-E and EIA with free keys.
+- **News**: Google News, central-bank feeds, GDELT, Finnhub.
 
-**Barone-Adesi-Whaley (American, analytic approximation).** The early-exercise premium solves a quadratic ODE. The critical price $S^*$ is found with Brent's method:
+It detects **unusual moves** (z-score of the day's return against one year of returns) and links them to headlines. It also includes correlations, a watchlist with alerts, and an option pricer and hedging backtest fed with the day's data.
 
-$$C_{Am}(S) = C_{Eu}(S) + A_2 \left(\frac{S}{S^*}\right)^{q_2}, \quad S < S^*.$$
+### 4. Momentum backtester
 
-**Longstaff-Schwartz least-squares Monte Carlo (American and Bermudan).**
-- Paths use the exact GBM scheme.
-- Going backwards, the continuation value is regressed on a basis of $S/K$ (polynomial or weighted Laguerre), using the in-the-money paths only.
-- The exercise policy is learnt on one set of paths and evaluated on an **independent** set, which gives an estimator biased low in expectation.
-- One core algorithm serves both cases: it runs on a time grid with a mask of exercisable dates. The American option is the regular grid; a Bermudan option is any list of dates.
+A daily long/short time-series momentum rule on EUR/USD, with transaction costs and a 70/30 train/test split. The best in-sample window (Sharpe 0.52) gives an out-of-sample Sharpe of −0.65: a clean example of overfitting, and the reason the split matters.
 
-**Arithmetic Asian options (Monte Carlo with a control variate).** The geometric average of a GBM is lognormal:
+## Key insights
 
-$$\ln G \sim \mathcal N\!\left(\ln S_0 + (r-q-\tfrac{\sigma^2}{2})\,\bar t,\; \tfrac{\sigma^2}{n^2}\sum_{i,j}\min(t_i,t_j)\right).$$
+1. **A Monte Carlo exercise policy is a lower bound.** LSM lands 0.4–1.3 % below the tree. The exact Bermudan tree on the same grid splits that gap into two parts: the regression bias, and the cost of exercising on discrete dates only.
+2. **A good control variate beats brute force.** The geometric Asian option, which has a closed form, divides the variance by about 555. That is the precision of 555 times more paths.
+3. **A delta-hedged option is a volatility trade.** Its P&L is driven by implied minus realised variance: +11.26 on SPY over one year, against +11.34 from the formula. With discrete rebalancing, the error shrinks like √Δt: its standard deviation is 0.44 with daily rebalancing and 1.94 with monthly rebalancing.
+4. **Flat volatility flatters products that sell options.** The S&P 500 skew (figure above) makes the down-and-in put embedded in autocallables and reverse convertibles worth more than at the at-the-money volatility. Coupons solved with a flat volatility are therefore too generous.
+5. **Issuer credit makes protection cheaper, and riskier.** Discounting at the issuer's spread lowers the cost of the zero-coupon bond. A 100 % protected note can then be built even at zero rates, and part of that "protection" is paid for by the investor bearing default risk.
+6. **Complexity has to earn its costs.**
+   - A protected note with 10 % embedded costs is dominated by the same protection built with listed calls.
+   - An autocallable is not "better" than the index. It is a trade-off: it gives up expected return in exchange for a better adverse case.
+7. **Market inputs matter as much as the model.** A smile built with the wrong forward shows a spurious jump at the money. Taking the forward and the discount factor from put-call parity on the listed options removes it.
 
-So the geometric Asian option has a closed form, which serves as a **control variate** for the arithmetic one: $\hat Y_{cv} = \bar Y - \beta(\bar X - \mathbb E[X])$, with $\beta = \mathrm{Cov}(Y,X)/\mathrm{Var}(X)$. Antithetic variates and batching complete the estimator.
+## Validation results
 
-**Greeks.** Delta, Gamma, Vega and Theta come from central finite differences that work with any pricer. Theta moves the dividend and observation dates. Monte Carlo pricers use common random numbers, so the noise does not dominate the differences.
-
-**Implied volatility.** Brent's method inverts any pricer: BSM for European options, BAW for American ones. Smiles and surfaces are built from live Yahoo Finance option chains (out-of-the-money mid quotes, spread filter), with moneyness $\ln(K/F)$ and an ATM term structure.
-
-**Delta-hedging backtest.** It sells an option at volatility $\sigma_h$, then holds the BSM delta, rebalanced on real or simulated prices. The P&L is explained by the gamma P&L:
-
-$$\text{P\&L} \approx \sum_k \tfrac12\,\Gamma_k S_k^2\left(\sigma_h^2\,\Delta t - r_k^2\right),$$
-
-where $r_k$ is the realised return over step $k$. The hedge earns money when the option was sold above the realised volatility, and loses money below.
-
-### Validation results (reproducible: `python -m pricer.diagnostics`)
-
-American puts from Longstaff and Schwartz (2001), table 1 (K = 40, r = 6 %), against a 2,000-step tree:
+American puts from Longstaff and Schwartz (2001), table 1 (K = 40, r = 6 %), against a 2,000-step tree. The full table is produced by `python -m pricer.diagnostics`.
 
 | S | σ | T | Tree | BAW | BAW error | LSM (100k paths) |
 |---|---|---|---|---|---|---|
@@ -86,161 +154,80 @@ American puts from Longstaff and Schwartz (2001), table 1 (K = 40, r = 6 %), aga
 | 40 | 0.4 | 2 | 6.9236 | 6.9753 | +0.75 % | 6.8872 |
 | 44 | 0.2 | 2 | 1.6934 | 1.7331 | +2.34 % | 1.6719 |
 
-- **BAW** stays within 0.25 % of the tree for at-the-money puts up to one year. On the 12 cases of the table it stays within 2.4 %, with the largest errors on out-of-the-money options. The error grows with the maturity: about 1.5 % at 5 years and 2 % at 10 years. This is the known weakness of the quadratic approximation.
-- **LSM** stays within about 1.3 % of the tree and **always below it**. This matches the theory: an out-of-sample policy is sub-optimal, and 50 exercise dates price a Bermudan rather than an American option. The exact Bermudan tree on the same grid isolates the two effects.
-- **Asian control variate.** It divides the variance by about 560 for a 1-year at-the-money call with 12 fixings: a standard error of 0.0008 instead of 0.019.
-- **Delta hedging on simulated paths** matches the theory. The mean P&L is about 0 when $\sigma_h = \sigma_{real}$, and its standard deviation grows like $\sqrt{\text{rebalancing interval}}$. A ±5-point volatility error produces ±1.99, exactly the gamma P&L estimate.
-- **Delta hedging on real data.** An at-the-money SPY call was sold in October 2025 at the VIX level of 21.7 % and hedged daily. The market realised 12.7 %, and the hedge earned 17.17 for a gamma P&L estimate of 17.25.
+## Engineering
 
----
+- **The engines are separate from the interfaces.** Calculations live in pure Python modules; the Streamlit apps and the terminal clients only display results.
+- **Code is reused, not duplicated.** One LSM core serves American and Bermudan options. The structuring platform reuses the pricing library and the dashboard's yield-curve sources.
+- **The test suite runs without network.** 213 unit tests check:
+  - payoffs on hand-built paths;
+  - closed forms against Monte Carlo, within 3 standard errors;
+  - limit cases with exact answers;
+  - convergence rates;
+  - the parsers of every API, on recorded answers.
 
-## 3. The market dashboard (`market_watch/`)
+  GitHub Actions runs them on every push. The Streamlit apps were also driven headlessly.
+- **Data honesty.** Market data is never fabricated: every fallback is labelled hypothetical, and a model value is never presented as a price.
 
-A Streamlit dashboard of daily market information, built **only on free sources**:
+## Limitations
 
-- **Market data.** Yahoo Finance gives 73 instruments: equity indices from Europe, the Americas, Asia-Pacific and Africa (JSE, EGX 30), FX including emerging and African currencies, commodities, and volatility indices.
-- **Rates and macro.** The US Treasury and ECB yield curves are shown today, one month ago and one year ago. FRED provides macro indicators, and the ECB provides €STR and its reference FX rates.
-- **Electricity.** Energy-Charts gives European day-ahead prices. ENTSO-E and EIA add more zones with a free API key.
-- **News.** Google News RSS, central-bank feeds (Fed, ECB, BoE) and GDELT, with Finnhub and Alpha Vantage as optional sources.
+- **Volatility.** It is constant: there is no skew dynamics and no stochastic volatility. Barrier and autocallable values are the most affected.
+- **Rates.** A flat curve at the maturity yield, so there are no products on interest rates.
+- **Issuer credit.** The default intensity is constant, and the spread is a user input, not observed.
+- **Scope of the structuring platform.** Single-underlying structures only: no worst-of baskets and no quanto adjustments.
+- **Free data.** Yahoo Finance is unofficial and can be delayed. European indices have no free listed options, so their volatility is historical.
+- **Longstaff-Schwartz.** Its low bias is not measured by its standard error.
+- **Barone-Adesi-Whaley.** Its error grows with maturity: about 2 % at 10 years.
+- **Suitability checks.** They are indicative only. They do not replace a MiFID II assessment or a PRIIPs KID.
 
-**Analytics:**
-- a performance heatmap (1D / 1W / 1M / YTD / 1Y);
-- **unusual moves** detected as a z-score of the day's return against one year of daily returns, with the related headlines;
-- correlation matrices and realised against implied volatility;
-- a watchlist with threshold alerts.
+## Next steps
 
-The dashboard also embeds an **option pricer fed with today's data**, a volatility surface and the delta-hedging backtest.
+- **Local or stochastic volatility** (Dupire, Heston), calibrated to the implied volatility surfaces already built here.
+- **Hull-White** for rate products and stochastic discounting.
+- **Worst-of** structures with a correlation model.
+- **The Andersen-Broadie upper bound**, to give a price interval around LSM.
+- **Pathwise and likelihood-ratio Greeks**, quasi-Monte Carlo (Sobol sequences), and a Brownian bridge for continuous barriers.
+- **A database of real term sheets**, to compare model values with actual issue prices.
 
-**Engineering:**
-- A single network module handles user agents, retries on HTTP 429/5xx and per-host rate limits.
-- Every source separates fetching from parsing, so parsers are tested offline on recorded answers.
-- A failing source shows a warning instead of crashing the page.
+<details>
+<summary><b>Example output</b> of <code>python -m structuring.client --report --offline</code></summary>
 
----
+```text
+Candidates:
+  Direct exposure: terms fixed
+  100 % capital-protected note: participation solved: 76.53%
+  90 % partially protected note: participation solved: 124.56%
+  Phoenix autocallable: coupon solved: 4.91%
+  Barrier reverse convertible 60 %: coupon solved: 4.40%
+  Cash + call spread 100%/110%: size: 2.53 spreads per unit
+  Collar 90%/110% on the underlying: terms fixed
 
-## 4. The structuring platform (`structuring/`)
-
-**Goal:** help an investor compare several structured solutions built from their **objectives, market scenario and constraints**, with transparent valuations and risks.
-
-### Workflow
-
-1. **Questionnaire.**
-   - *Objectives*: capital, target return, horizon, income need, currency.
-   - *A described market scenario.* The investor lists weighted cases instead of only "bullish/bearish", for example 50 % "+8 % within six months, volatility −3 pts", 30 % stagnation, 20 % "−15 % within a year".
-   - *Risk constraints*: maximum loss, lock-up, liquidity, issuer credit risk, knowledge of derivatives, feared scenarios.
-2. **Market data with provenance.**
-   - Spot and government yields are *observed*.
-   - Implied or historical volatility and dividends (from an ETF proxy) are *model estimates*.
-   - Issuer spread, recovery, fees and issue price are *hypothetical*.
-   - Each parameter carries its source and date.
-3. **Candidate structures.** The platform proposes:
-   - direct exposure, as the reference;
-   - 100 % and 90 % capital-protected notes;
-   - a Phoenix autocallable with memory coupons;
-   - a barrier reverse convertible;
-   - call or put spreads;
-   - a collar.
-
-   Coupons and participations are **solved** so that the issuer-adjusted model value equals the issue price minus costs, exactly as a structurer prices a term sheet.
-4. **Valuation sheet.**
-   - The risk-free value, the issuer credit adjustment, and the bond and derivative parts.
-   - The embedded costs, split into documented fees and the estimated margin.
-   - The option components, valued one by one: zero-coupon bond, calls, digital coupon strip, down-and-in put. They add up exactly to the model value.
-5. **Scenarios and stress tests.** Deterministic paths (crash then recovery, V-shape…) show the path dependency of barriers and autocalls. Distributions are given under the investor's scenario and under the risk-neutral measure, always labelled. The **stress test of the convictions** covers:
-   - right, but the volatility explodes;
-   - right, but slower;
-   - right, then a reversal;
-   - stagnation for the whole life;
-   - wrong direction;
-   - crash.
-6. **Suitability checks.** Every declared preference is compared with the **contractual** property of each structure. For example, the declared maximum loss is checked against the worst loss the contract allows, and issuer default is reported separately. The verdict is never a ranking by return.
-7. **Comparison with simple solutions.** Each structure is compared with direct exposure, a do-it-yourself option combination without issuer, and a deposit + underlying allocation with the same maximum loss. The platform says whether the complexity **adds value**, **is dominated**, or is a **trade-off**.
-8. **Structuring lab.** Every term (barriers, coupons, maturity, protection, option legs) can be edited, with an immediate update of the theoretical cost and the return profile.
-9. **Professional mode.** It shows the valuation assumptions, full Greeks (delta, gamma, vega, rho, credit, theta), Monte Carlo convergence and the model limits of each product.
-
-### Mathematics
-
-- **Dynamics.** A single GBM covers three asset classes through the carry yield $q$:
-  - equities: $q$ = dividend yield;
-  - FX (Garman-Kohlhagen): $q$ = foreign interest rate;
-  - commodities (Black's model on futures): $q = r$.
-- **Payoffs as cash flows.** Each structure maps simulated performance paths $P_t = S_t/S_0$ to cash flows, so one representation serves valuation, scenarios and risk. Barriers can be observed at maturity or daily.
-- **Issuer credit.** Default follows a constant intensity $\lambda = s/(1-R)$, independent of the market. A promised flow at $t$ is worth $e^{-rt}\left(S(t) + R\,(1-S(t))\right)$ with $S(t) = e^{-\lambda t}$.
-- **Solving a term.** The value is linear in the coupon or participation on fixed paths, so two valuations give the exact solution: $c^* = (V_{target} - V(0))/(V(1) - V(0))$.
-- **Closed forms where they exist.** Protected notes, plain reverse convertibles and option packages use BSM; Monte Carlo is shown only as a check. Path-dependent structures use Monte Carlo with antithetic variates and a reported standard error.
-- **Scenario mixture.** Each case is simulated on a share of paths equal to its subjective probability, with a piecewise drift chosen so that the **median** move is reached at the case horizon: $\mu = \ln(1+m)/h + \sigma^2/2$.
-
-The full methodology, with assumptions and limits, is in [`structuring/METHODOLOGY.md`](structuring/METHODOLOGY.md).
-
----
-
-## 5. Software engineering
-
-- **Separation of concerns.** Calculation engines are pure Python modules; the user interfaces (terminal client, Streamlit apps) only lay out their results.
-- **Reuse instead of duplication.**
-  - The structuring platform reuses the pricer (BSM, exact GBM simulation, Monte Carlo statistics, Yahoo data, implied volatility) and the dashboard's yield-curve sources.
-  - A single LSM core serves American and Bermudan options.
-- **Tests.** 212 unit tests run offline in about 40 seconds.
-
-  | Suite | Tests |
-  |---|---|
-  | `pricer` | 120 |
-  | `market_watch` | 25 |
-  | `structuring` | 67 |
-
-  They check payoffs on hand-built paths, closed forms against Monte Carlo (within 3 standard errors), limit cases with exact answers, convergence rates, and the parsers on recorded API answers. The Streamlit apps were also driven headlessly with `streamlit.testing`.
-- **Data honesty.** No fabricated market data: every fallback is labelled hypothetical, and model values are never presented as prices.
-
----
-
-## 6. Limitations
-
-- **Constant volatility.** There is no smile dynamics: flat volatility ignores the skew. As a result:
-  - barrier reverse convertibles and autocallables are likely **overvalued** for the investor;
-  - their solved coupons are higher than a real offer.
-- **Constant rates and a flat curve at the maturity yield.** Products on interest rates are not covered.
-- **Simplified issuer credit.** The default intensity is constant and independent of the market, and the issuer spread is a user input, not observed.
-- **Single-underlying structures only.** No worst-of baskets, since correlations would be hard to justify without reliable data.
-- **Free data sources.** Yahoo Finance is unofficial and can change or be delayed. There are no listed options on European indices in free data, so their volatility is historical. Index dividends come from ETF proxies.
-- **LSM.** The estimate is biased low, as theory predicts, and the standard error does not measure that bias.
-- **BAW.** Its error grows with maturity: about 2 % at 10 years.
-- **Delta-hedging backtest.** It uses BSM deltas, a continuous dividend yield and proportional transaction costs only.
-- **Suitability.** The checks are indicative. They do not replace a MiFID II suitability assessment, PRIIPs documentation or product governance.
-
-## 7. Possible improvements
-
-- **Local or stochastic volatility** (Dupire, Heston), calibrated to the implied volatility surface the project already builds. This matters most for barriers and autocallables.
-- **A term structure of rates and a Hull-White model**, to cover rate products and stochastic discounting.
-- **Multi-asset structures** (worst-of autocallables) with a correlation model and quanto adjustments.
-- **An upper bound for American and Bermudan options** with the Andersen-Broadie dual method, giving a price interval around LSM.
-- **Pathwise and likelihood-ratio Greeks** for the Monte Carlo pricers, instead of bump-and-revalue.
-- **Variance reduction for path-dependent structures**: Brownian bridge for continuous barriers, quasi-Monte Carlo with Sobol sequences.
-- **A database of real term sheets and KIDs**, to compare model values with actual issue prices and estimate real embedded costs.
-- **Packaging**: a `requirements.txt` or `pyproject.toml`, continuous integration running the tests on every push, and a deployed demo.
-
----
-
-## How to run
-
-Requires Python 3.12 with `numpy`, `scipy`, `pandas`, `matplotlib`, `requests`, `yfinance` and `streamlit`:
-
-```bash
-pip install numpy scipy pandas matplotlib requests yfinance streamlit
-
-python -m pricer.client                        # interactive option pricer (terminal)
-python -m pricer.diagnostics                   # validation and convergence tables
-python -m streamlit run market_watch/app.py    # market dashboard
-python -m structuring.client                   # structured products platform
-python -m structuring.client --report --offline   # text report, no network needed
-
-# tests (offline)
-python -m unittest discover -s pricer/test -t .
-python -m unittest discover -s market_watch/test -t .
-python -m unittest discover -s structuring/test -t .
+                        structure  maturity (y)           potential return median (your scenario) estimated costs max loss (issuer solvent)                           fit with profile
+                  Direct exposure           5.0            uncapped upside                 +22.3%           0.00%                    100.0% Not consistent with the stated constraints
+     100 % capital-protected note           5.0            uncapped upside                  +8.1%           5.00%                      0.0%               Consistent with reservations
+    90 % partially protected note           5.0            uncapped upside                  +3.2%           5.00%                     10.0%               Consistent with reservations
+             Phoenix autocallable           5.0 at most +24.5% (+4.49%/yr)                  +4.9%           5.00%                    100.0% Not consistent with the stated constraints
+ Barrier reverse convertible 60 %           5.0 at most +22.0% (+4.06%/yr)                 +22.0%           5.00%                     78.0% Not consistent with the stated constraints
+     Cash + call spread 100%/110%           3.0 at most +23.8% (+7.37%/yr)                 +23.8%           0.50%                      1.5%     Consistent with the stated constraints
+Collar 90%/110% on the underlying           5.0 at most +36.4% (+6.41%/yr)                 +27.0%           0.50%                      4.6%     Consistent with the stated constraints
 ```
 
-Optional API keys for the dashboard (Finnhub, Alpha Vantage, ENTSO-E, EIA) go in `market_watch/.env`, which git ignores. Every page also works without them.
+The market is hypothetical in offline mode: r = 3 %, q = 2 %, σ = 20 %, issuer spread 100 bp, fees 1 % per year. The demo investor accepts at most a 10 % loss, which is why the structures that can lose more fail the suitability check.
+</details>
+
+## References
+
+- Black, F. and Scholes, M. (1973), *The Pricing of Options and Corporate Liabilities*; Merton, R. (1973), *Theory of Rational Option Pricing*.
+- Cox, J., Ross, S. and Rubinstein, M. (1979), *Option Pricing: A Simplified Approach*.
+- Barone-Adesi, G. and Whaley, R. (1987), *Efficient Analytic Approximation of American Option Values*.
+- Longstaff, F. and Schwartz, E. (2001), *Valuing American Options by Simulation: A Simple Least-Squares Approach*.
+- Kemna, A. and Vorst, A. (1990), *A Pricing Method for Options Based on Average Asset Values*.
+- Bos, M. and Vandermark, S. (2002), *Finessing Fixed Dividends*; Vellekoop, M. and Nieuwenhuis, J. (2006), *Efficient Pricing of Derivatives on Assets with Discrete Dividends*.
+- Hull, J., *Options, Futures, and Other Derivatives*; Glasserman, P. (2003), *Monte Carlo Methods in Financial Engineering*.
+
+## How this project was built
+
+The project was developed with AI-assisted coding (Claude Code). I defined the scope, the requirements and the design choices of each project. Each model is validated against an independent reference by the test suite. [`CLAUDE.md`](CLAUDE.md) records the project's conventions for the coding assistant.
 
 ---
 
-*Author: Arnaud Illien. Built as a personal project to practise derivatives pricing, risk management and product structuring.*
+*Educational project. Model values are estimates, not executable prices, and nothing here is investment advice.*
