@@ -12,10 +12,14 @@ V_cum(S) = V_ex(S - D). Each dividend is moved to the nearest tree step, and
 exercise at that step uses the cum-dividend spot.
 
 The CRR price oscillates between even and odd numbers of steps; binomial_price
-returns the average of the trees with n and n + 1 steps, which smooths this out.
-The remaining error is of order 1/n.
+and bermudan_tree_price return the average of the trees with n and n + 1
+steps, which smooths this out. The remaining error is of order 1/n.
+
+The exercise style is a rule "can the holder exercise at step i?": always
+(American), never (European), or at given steps (Bermudan).
 """
 import math
+from collections.abc import Callable
 
 import numpy as np
 
@@ -32,7 +36,7 @@ def _interpolate(nodes: np.ndarray, values: np.ndarray, points: np.ndarray) -> n
     return y[i - 1] + (y[i] - y[i - 1])*(points - x[i - 1])/(x[i] - x[i - 1])
 
 
-def _crr_tree(option: Option, market: Market, n_steps: int, american: bool, steps_between_exercises: int = 1) -> float:
+def _crr_tree(option: Option, market: Market, n_steps: int, can_exercise: Callable[[int], bool]) -> float:
     dt = option.maturity/n_steps
     u = math.exp(market.volatility*math.sqrt(dt))
     d = 1/u
@@ -54,19 +58,24 @@ def _crr_tree(option: Option, market: Market, n_steps: int, american: bool, step
         if i in dividend_steps:
             ex_dividend_spot = np.maximum(nodes - dividend_steps[i], 0.0)
             values = np.maximum(_interpolate(nodes, values, ex_dividend_spot), 0.0)
-        if american and i % steps_between_exercises == 0:
+        if can_exercise(i):
             values = np.maximum(values, option.payoff(nodes))
     return float(values[0])
+
+
+def _check_tree(market: Market, n_steps: int):
+    if market.volatility == 0:
+        raise ValueError("The CRR tree is not defined for a zero volatility.")
+    if n_steps < 2:
+        raise ValueError("The tree needs at least 2 steps.")
 
 
 def binomial_price(option: Option, market: Market, n_steps: int = 2000, american: bool = True) -> float:
     if option.maturity == 0:
         return option.payoff(market.spot)
-    if market.volatility == 0:
-        raise ValueError("The CRR tree is not defined for a zero volatility.")
-    if n_steps < 2:
-        raise ValueError("The tree needs at least 2 steps.")
-    return (_crr_tree(option, market, n_steps, american) + _crr_tree(option, market, n_steps + 1, american))/2
+    _check_tree(market, n_steps)
+    rule = (lambda i: True) if american else (lambda i: False)
+    return (_crr_tree(option, market, n_steps, rule) + _crr_tree(option, market, n_steps + 1, rule))/2
 
 
 def bermudan_binomial_price(option: Option, market: Market, n_dates: int, steps_per_date: int = 40) -> float:
@@ -79,4 +88,23 @@ def bermudan_binomial_price(option: Option, market: Market, n_dates: int, steps_
     """
     if option.maturity == 0:
         return option.payoff(market.spot)
-    return _crr_tree(option, market, n_dates*steps_per_date, True, steps_per_date)
+    return _crr_tree(option, market, n_dates*steps_per_date, lambda i: i % steps_per_date == 0)
+
+
+def bermudan_tree_price(option: Option, market: Market, exercise_times, n_steps: int = 2000) -> float:
+    """
+    Option exercisable at `exercise_times` (years, in [0, T]) and at the maturity, the
+    convention of lsm.bermudan_lsm_price. Each date is moved to the nearest tree step,
+    a shift of at most T / (2 n_steps): an error of order 1/n, like the tree itself.
+    """
+    times = [float(t) for t in exercise_times]
+    if any(t < 0 or t > option.maturity for t in times):
+        raise ValueError(f"Every exercise date must lie between 0 and the maturity T={option.maturity}.")
+    if option.maturity == 0:
+        return option.payoff(market.spot)
+    _check_tree(market, n_steps)
+
+    def price(n):
+        steps = {round(t/option.maturity*n) for t in times}
+        return _crr_tree(option, market, n, steps.__contains__)
+    return (price(n_steps) + price(n_steps + 1))/2

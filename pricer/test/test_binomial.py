@@ -13,7 +13,7 @@ from pricer.binomial import bermudan_binomial_price, binomial_price
 from pricer.contract import Option
 from pricer.european import european_price
 from pricer.market import Dividend, Market
-from pricer.model import BlackScholesModel
+from pricer.model import BlackScholesModel, nearest_columns
 
 DIVIDENDS = (Dividend(0.25, 3), Dividend(0.75, 3))
 
@@ -77,6 +77,14 @@ class TestModel(unittest.TestCase):
         times = model.simulation_times(1, 4)
         np.testing.assert_allclose(times, [0, 0.25, 0.3, 0.5, 0.75, 1])
         np.testing.assert_allclose(model.dividend_payouts(times), [0, 0, 1, 1, 0, 0])
+
+    def test_time_grid_with_given_dates(self):
+        model = BlackScholesModel(Market(100, 0.05, 0.2, dividends=(Dividend(0.5, 1),)))
+        times = model.time_grid(1, [0.75, 0.25, 0.5, 0.25])
+        np.testing.assert_allclose(times, [0, 0.25, 0.5, 0.75, 1])
+        np.testing.assert_array_equal(nearest_columns(times, [0.25, 1, 0.25]), [1, 4, 1])
+        with self.assertRaises(ValueError):
+            model.time_grid(1, [1.5])
 
     def test_forward_with_dividends(self):
         # E[S_T] = (S e^{bt} - D) e^{b(T - t)} for one dividend D paid at t (no floor reached)

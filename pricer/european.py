@@ -18,6 +18,7 @@ import math
 from dataclasses import replace
 from datetime import date
 
+import numpy as np
 from scipy.stats import norm
 
 from .contract import Option, year_fraction
@@ -45,6 +46,21 @@ def bsm_price(is_call: bool, spot, strike, maturity, rate, dividend_yield, vol) 
     if is_call:
         return float(discounted_spot*norm.cdf(D1) - discounted_strike*norm.cdf(D2))
     return float(discounted_strike*norm.cdf(-D2) - discounted_spot*norm.cdf(-D1))
+
+
+def bsm_price_and_delta(is_call: bool, spot, strike, maturity, rate, dividend_yield, vol):
+    """
+    Vectorised BSM price and delta: spot and maturity can be numpy arrays (maturity > 0
+    and vol > 0). Used by the delta-hedging backtest, which needs them on every path.
+    """
+    spot, maturity = np.asarray(spot, dtype=float), np.asarray(maturity, dtype=float)
+    root = vol*np.sqrt(maturity)
+    D1 = (np.log(spot/strike) + (rate - dividend_yield + vol**2/2)*maturity)/root
+    D2 = D1 - root
+    carry_discount, discount = np.exp(-dividend_yield*maturity), np.exp(-rate*maturity)
+    if is_call:
+        return spot*carry_discount*norm.cdf(D1) - strike*discount*norm.cdf(D2), carry_discount*norm.cdf(D1)
+    return strike*discount*norm.cdf(-D2) - spot*carry_discount*norm.cdf(-D1), -carry_discount*norm.cdf(-D1)
 
 
 def escrowed_dividends(option: Option, market: Market) -> tuple[Option, Market]:

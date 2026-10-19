@@ -8,6 +8,10 @@ With LSM, the fixed seed gives common random numbers to the bumped prices, but
 the Greeks remain noisy, Gamma above all: use wider bumps (1 % of the spot,
 for example).
 
+The contract can be an `Option` or an `AsianOption`: Theta moves it forward
+with its `shifted` method (the observation dates of an Asian option move
+closer too).
+
 Units: Vega is for a change of sigma of 1 (100 volatility points), and Theta
 is the change in value per year as time passes (-dV/dT, with the spot held
 fixed and the dividend dates moving closer).
@@ -50,6 +54,6 @@ def compute_greeks(price_fn: PriceFunction, option: Option, market: Market,
     if dt == 0:
         theta = 0.0
     else:
-        later = price_fn(replace(option, maturity=option.maturity - dt), market.shifted(dt))
+        later = price_fn(option.shifted(dt), market.shifted(dt))
         theta = (later - v0)/dt
     return Greeks(delta, gamma, vega, theta)

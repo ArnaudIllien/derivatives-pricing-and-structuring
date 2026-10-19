@@ -3,27 +3,37 @@ model.py - Underlying model: geometric Brownian motion under the risk-neutral me
 
     dS_t = (r - q) S_t dt + sigma S_t dW_t, with a drop of D at each discrete dividend.
 
-`BlackScholesModel` builds the simulation time grid (regular dates plus the
-dividend dates) and simulates paths with the exact GBM scheme, so there is no
-discretisation error at the grid dates.
+`BlackScholesModel` builds the simulation time grid (the dates the pricer needs,
+regular or not, plus the dividend dates) and simulates paths with the exact GBM
+scheme, so there is no discretisation error at the grid dates. Path-dependent
+payoffs therefore only need the grid to contain their own dates (observation
+dates of an Asian option, exercise dates of a Bermudan option).
 
 Any other model (local or stochastic volatility...) must expose the same
-`simulation_times` and `simulate` methods to be used by the LSM pricer.
+`time_grid`, `simulation_times` and `simulate` methods to be used by the Monte
+Carlo pricers.
 """
 import numpy as np
 
 from .market import Market
 
 
+def nearest_columns(times: np.ndarray, dates) -> np.ndarray:
+    """Index in `times` of the grid date closest to each date."""
+    dates = np.atleast_1d(np.asarray(dates, dtype=float))
+    return np.abs(times[:, None] - dates[None, :]).argmin(axis=0)
+
+
 class BlackScholesModel:
     def __init__(self, market: Market):
         self.market = market
 
-    def simulation_times(self, maturity: float, n_steps: int) -> np.ndarray:
-        """Regular grid k T / n_steps, merged with the dividend dates in (0, T)."""
-        if n_steps < 1:
-            raise ValueError("At least one time step is needed.")
-        grid = np.linspace(0, maturity, n_steps + 1)
+    def time_grid(self, maturity: float, dates=()) -> np.ndarray:
+        """Sorted grid made of 0, the given dates in [0, T], T and the dividend dates in (0, T)."""
+        dates = np.asarray(dates, dtype=float)
+        if np.any((dates < 0) | (dates > maturity)):
+            raise ValueError(f"Every date must lie between 0 and the maturity T={maturity}.")
+        grid = np.unique(np.concatenate([[0.0, maturity], dates]))
         dividend_times = np.array([d.time for d in self.market.dividends_before(maturity)])
         if len(dividend_times) == 0:
             return grid
@@ -31,6 +41,12 @@ class BlackScholesModel:
         tolerance = 1e-10*maturity
         keep = np.all(np.abs(grid[:, None] - dividend_times[None, :]) > tolerance, axis=1)
         return np.unique(np.concatenate([grid[keep], dividend_times]))
+
+    def simulation_times(self, maturity: float, n_steps: int) -> np.ndarray:
+        """Regular grid k T / n_steps, merged with the dividend dates in (0, T)."""
+        if n_steps < 1:
+            raise ValueError("At least one time step is needed.")
+        return self.time_grid(maturity, np.linspace(0, maturity, n_steps + 1))
 
     def dividend_payouts(self, times: np.ndarray) -> np.ndarray:
         """Cash amount paid at each date of the grid (zero where there is no dividend)."""

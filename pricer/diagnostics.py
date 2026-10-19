@@ -1,5 +1,5 @@
 """
-diagnostics.py - Convergence diagnostics of the American pricers.
+diagnostics.py - Convergence diagnostics of the American, Bermudan and Asian pricers.
 
 HOW TO RUN
     From the folder that contains pricer/:
@@ -15,12 +15,16 @@ WHAT IT PRINTS
     4. LSM against the regression basis.
     5. BAW error against the maturity.
     6. Discrete dividends: an American call with dividends, priced by every model.
+    7. Asian call: convergence in the number of paths, plain Monte Carlo and
+       with the geometric control variate.
+    8. Bermudan put: LSM against the reference tree on several sets of exercise dates.
 """
+from .asian import AsianParameters, asian_convergence, geometric_asian_price
 from .baw import baw_result
-from .binomial import bermudan_binomial_price, binomial_price
-from .contract import Option
+from .binomial import bermudan_binomial_price, bermudan_tree_price, binomial_price
+from .contract import AsianOption, Option
 from .european import european_price
-from .lsm import LSMParameters, lsm_price
+from .lsm import LSMParameters, bermudan_lsm_price, lsm_price
 from .market import Dividend, Market
 
 # Longstaff and Schwartz (2001), table 1: put K = 40, r = 6 %
@@ -93,6 +97,29 @@ def discrete_dividends():
               f" {baw_result(option, market).price:>8.4f} {lsm.price:>8.4f} {lsm.std_error:>7.4f}")
 
 
+def asian_paths():
+    option, market = AsianOption.regular("call", 100, 1, 12), Market(100, 0.05, 0.2)
+    print("\n7. Asian call, 12 monthly observations, S=K=100, r=5 %, vol=20 %, T=1"
+          f" (geometric closed form = {geometric_asian_price(option, market):.4f},"
+          f" European = {european_price(option.vanilla, market):.4f})")
+    print(f"{'N':>8} {'plain':>8} {'s.e.':>8} {'s.e. x sqrt(N)':>15} {'control':>9} {'s.e.':>8} {'var. ratio':>11}")
+    for n, r in asian_convergence(option, market, (5_000, 20_000, 80_000, 320_000), AsianParameters()):
+        print(f"{n:>8} {r.plain_price:>8.4f} {r.plain_std_error:>8.4f} {r.plain_std_error*n**0.5:>15.3f}"
+              f" {r.price:>9.4f} {r.std_error:>8.5f} {r.variance_reduction:>11.0f}")
+
+
+def bermudan_dates(option, market):
+    print(f"\n8. Bermudan put K=40, S=36, r=6 %, vol=20 %, T=1 (European = {european_price(option, market):.4f},"
+          f" American = {binomial_price(option, market):.4f})")
+    print(f"{'exercise dates':>22} {'tree':>8} {'LSM':>8} {'s.e.':>7} {'(LSM-tree)/s.e.':>16}")
+    for dates in ((0.5,), (0.25, 0.5, 0.75), tuple(m/12 for m in range(1, 12)), (0.9,)):
+        reference = bermudan_tree_price(option, market, dates)
+        r = bermudan_lsm_price(option, market, dates)
+        label = " ".join(f"{t:.2g}" for t in dates) if len(dates) <= 3 else "monthly (11)"
+        print(f"{label:>22} {reference:>8.4f} {r.price:>8.4f} {r.std_error:>7.4f}"
+              f" {(r.price - reference)/r.std_error:>16.1f}")
+
+
 if __name__ == "__main__":
     option, market = Option("put", 40, 1), Market(36, 0.06, 0.2)
     compare_methods()
@@ -101,3 +128,5 @@ if __name__ == "__main__":
     basis_effect(option, market)
     baw_against_maturity()
     discrete_dividends()
+    asian_paths()
+    bermudan_dates(option, market)

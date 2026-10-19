@@ -1,0 +1,10 @@
+# Python caches
+__pycache__/
+*.pyc
+
+# API keys of the market dashboard: never commit them
+market_watch/.env
+.env
+
+# Personal dashboard state
+market_watch/watchlist.json
